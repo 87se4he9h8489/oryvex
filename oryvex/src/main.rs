@@ -12,7 +12,7 @@ mod prober;
 mod quic;
 mod socks;
 mod tls;
-mod aethernoize;
+mod oryvexnoize;
 mod wireguard;
 mod wg_prober;
 
@@ -111,12 +111,11 @@ fn noize_config() -> noize::NoizeConfig {
     noize::from_profile(&profile)
 }
 
-fn aethernoize_config() -> aethernoize::OryvexNoizeConfig {
+fn oryvexnoize_config() -> oryvexnoize::OryvexNoizeConfig {
     let profile = std::env::var("ORYVEX_NOIZE").unwrap_or_else(|_| "balanced".to_string());
-    log::info!("[+] aethernoize profile: {profile}");
-    aethernoize::from_profile(&profile)
+    log::info!("[+] oryvexnoize profile: {profile}");
+    oryvexnoize::from_profile(&profile)
 }
-
 fn warp_config_path(base: &str) -> String {
     if let Ok(p) = std::env::var("ORYVEX_WG_CONFIG") {
         return p;
