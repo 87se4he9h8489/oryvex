@@ -16,6 +16,9 @@ mod oryvexnoize;
 mod wireguard;
 mod wg_prober;
 
+#[cfg(feature = "gui")]
+mod gui;
+
 use std::net::{IpAddr, SocketAddr};
 
 use error::{OryvexError, Result};
@@ -24,8 +27,61 @@ const TUNNEL_MTU: usize = 1280;
 const INNER_MTU: usize = 1200;
 const DEFAULT_CONFIG: &str = "oryvex.toml";
 
+#[cfg(feature = "gui")]
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
+    install_netstack_panic_guard();
+
+    // Check if GUI mode is requested
+    let gui_mode = std::env::var("ORYVEX_GUI").is_ok() || 
+                   std::env::args().any(|arg| arg == "--gui" || arg == "-g");
+
+    if gui_mode {
+        log::info!("Starting Oryvex GUI mode...");
+        return run_gui().await;
+    }
+
+    // CLI mode
+    run_cli().await
+}
+
+#[cfg(not(feature = "gui"))]
+#[tokio::main]
+async fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
+    install_netstack_panic_guard();
+
+    // Check if GUI mode is requested (will fail without gui feature)
+    let gui_mode = std::env::var("ORYVEX_GUI").is_ok() || 
+                   std::env::args().any(|arg| arg == "--gui" || arg == "-g");
+
+    if gui_mode {
+        eprintln!("Error: GUI feature not compiled. Rebuild with --features gui");
+        eprintln!("  cargo build --features gui --release");
+        return Err(OryvexError::Other("GUI feature not available".into()));
+    }
+
+    run_cli().await
+}
+
+#[cfg(feature = "gui")]
+async fn run_gui() -> Result<()> {
+    use iced::{Application, Settings};
+    use gui::app::OryvexGui;
+    
+    // Run the GUI application
+    let _ = OryvexGui::run(Settings::default());
+    Ok(())
+}
+
+async fn run_cli() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
         .init();
@@ -116,6 +172,7 @@ fn oryvexnoize_config() -> oryvexnoize::OryvexNoizeConfig {
     log::info!("[+] oryvexnoize profile: {profile}");
     oryvexnoize::from_profile(&profile)
 }
+
 fn warp_config_path(base: &str) -> String {
     if let Ok(p) = std::env::var("ORYVEX_WG_CONFIG") {
         return p;
@@ -229,7 +286,7 @@ async fn select_peer(identity: &account::Identity, protocol: Protocol) -> Result
                 peer_public_key: std::sync::Arc::new(peer_public),
                 client_id: identity.client_id.clone(),
                 local_ipv4: identity.ipv4.parse().map_err(|_| OryvexError::Other("invalid ipv4".into()))?,
-                aethernoize: aethernoize_config(),
+                oryvexnoize: oryvexnoize_config(),
                 ports: wireguard::WG_PORTS.to_vec(),
                 ip,
             };
@@ -351,9 +408,9 @@ fn wg_keepalive_secs() -> u16 {
         .unwrap_or(5)
 }
 
-fn wg_profile_candidates() -> Vec<(String, aethernoize::OryvexNoizeConfig)> {
+fn wg_profile_candidates() -> Vec<(String, oryvexnoize::OryvexNoizeConfig)> {
     let primary = std::env::var("ORYVEX_NOIZE").unwrap_or_else(|_| "balanced".to_string());
-    log::info!("[+] aethernoize primary profile: {primary}");
+    log::info!("[+] oryvexnoize primary profile: {primary}");
 
     let mut names = vec![primary.clone()];
     if std::env::var("ORYVEX_WG_NO_PROFILE_RETRY").is_err() {
@@ -367,7 +424,7 @@ fn wg_profile_candidates() -> Vec<(String, aethernoize::OryvexNoizeConfig)> {
     names
         .into_iter()
         .map(|n| {
-            let cfg = aethernoize::from_profile(&n);
+            let cfg = oryvexnoize::from_profile(&n);
             (n, cfg)
         })
         .collect()
@@ -377,7 +434,7 @@ async fn hunt_wg_peer_with_profile(
     identity: &account::Identity,
     mode_str: &str,
     ip: prober::IpScan,
-    profile: aethernoize::OryvexNoizeConfig,
+    profile: oryvexnoize::OryvexNoizeConfig,
 ) -> Result<SocketAddr> {
     let mode = wg_prober::WgScanMode::parse(mode_str);
     let private_key = identity.private_key_bytes()?;
@@ -391,7 +448,7 @@ async fn hunt_wg_peer_with_profile(
             .ipv4
             .parse()
             .map_err(|_| OryvexError::Other("invalid ipv4".into()))?,
-        aethernoize: profile,
+        oryvexnoize: profile,
         ports: wireguard::WG_PORTS.to_vec(),
         ip,
     };
@@ -415,7 +472,7 @@ async fn run_wireguard(identity: account::Identity, listen: SocketAddr) -> Resul
         .parse()
         .map_err(|_| OryvexError::Other("invalid ipv4".into()))?;
 
-    let selected: Option<(SocketAddr, aethernoize::OryvexNoizeConfig)> = if let Some(p) = forced {
+    let selected: Option<(SocketAddr, oryvexnoize::OryvexNoizeConfig)> = if let Some(p) = forced {
         let peer: SocketAddr = p
             .parse()
             .map_err(|_| OryvexError::Other(format!("bad peer address {p}")))?;
@@ -423,7 +480,7 @@ async fn run_wireguard(identity: account::Identity, listen: SocketAddr) -> Resul
 
         let mut chosen = None;
         for (name, profile) in &candidates {
-            log::info!("[*] testing forced peer {peer} with aethernoize profile '{name}'");
+            log::info!("[*] testing forced peer {peer} with oryvexnoize profile '{name}'");
             match wireguard::verify_endpoint(
                 peer,
                 private_key,
@@ -453,11 +510,11 @@ async fn run_wireguard(identity: account::Identity, listen: SocketAddr) -> Resul
         let mut chosen = None;
         for (name, profile) in &candidates {
             log::info!(
-                "[*] hunting for a working WireGuard endpoint (handshake + data-plane verification, aethernoize='{name}')"
+                "[*] hunting for a working WireGuard endpoint (handshake + data-plane verification, oryvexnoize='{name}')"
             );
             match hunt_wg_peer_with_profile(&identity, &mode_str, ip, profile.clone()).await {
                 Ok(peer) => {
-                    log::info!("[+] selected WireGuard endpoint {peer} using aethernoize profile '{name}'");
+                    log::info!("[+] selected WireGuard endpoint {peer} using oryvexnoize profile '{name}'");
                     chosen = Some((peer, profile.clone()));
                     break;
                 }
@@ -481,7 +538,7 @@ async fn run_wireguard(identity: account::Identity, listen: SocketAddr) -> Resul
 async fn run_wireguard_tunnel(
     identity: account::Identity,
     peer: SocketAddr,
-    aethernoize: aethernoize::OryvexNoizeConfig,
+    oryvexnoize: oryvexnoize::OryvexNoizeConfig,
     listen: SocketAddr,
 ) -> Result<()> {
     log::info!("[*] confirming WireGuard handshake + data flow with {peer}...");
@@ -497,7 +554,7 @@ async fn run_wireguard_tunnel(
         peer_public,
         identity.client_id,
         ipv4,
-        &aethernoize,
+        &oryvexnoize,
         std::time::Duration::from_secs(10),
     )
     .await;
@@ -524,7 +581,7 @@ async fn run_wireguard_tunnel(
         client_id: identity.client_id,
         preshared_key: None,
         persistent_keepalive: Some(wg_keepalive_secs()),
-        oryvexnoize: std::sync::Arc::new(aethernoize),
+        oryvexnoize: std::sync::Arc::new(oryvexnoize),
     };
 
     let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(1024);
@@ -570,9 +627,9 @@ async fn establish_wg(
         .map_err(|_| OryvexError::Other("invalid ipv6".into()))?;
 
     let profile = if obfuscate {
-        aethernoize_config()
+        oryvexnoize_config()
     } else {
-        aethernoize::from_profile("off")
+        oryvexnoize::from_profile("off")
     };
 
     let cfg = wireguard::WgConfig {

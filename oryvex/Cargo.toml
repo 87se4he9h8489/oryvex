@@ -39,9 +39,26 @@ http = "1"
 bytes = "1"
 tokio-boring = "4.22"
 
+# GUI dependencies (optional - enable with --features gui)
+iced = { version = "0.12", features = ["tokio", "wgpu"], optional = true }
+winit = { version = "0.29", optional = true }
+winit_input_helper = { version = "0.13", optional = true }
+futures-util = { version = "0.3", optional = true }
+crossbeam-channel = { version = "0.5", optional = true }
+signal-hook = { version = "0.3", optional = true }
+signal-hook-tokio = { version = "0.3", optional = true }
+
+[features]
+default = []
+gui = ["iced", "winit", "winit_input_helper", "futures-util", "crossbeam-channel", "signal-hook", "signal-hook-tokio"]
+
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "unwind"
 strip = true
+
+[profile.dev]
+opt-level = 1
+debug = true
