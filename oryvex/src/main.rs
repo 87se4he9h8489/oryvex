@@ -525,7 +525,7 @@ async fn run_wireguard_tunnel(
         client_id: identity.client_id,
         preshared_key: None,
         persistent_keepalive: Some(wg_keepalive_secs()),
-        aethernoize: std::sync::Arc::new(aethernoize),
+        oryvexnoize: std::sync::Arc::new(aethernoize),
     };
 
     let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(1024);
@@ -585,7 +585,7 @@ async fn establish_wg(
         client_id: identity.client_id,
         preshared_key: None,
         persistent_keepalive: Some(keepalive),
-        aethernoize: std::sync::Arc::new(profile),
+        oryvexnoize: std::sync::Arc::new(profile),
     };
 
     let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(1024);
