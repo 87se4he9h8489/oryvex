@@ -66,5 +66,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: oryvex-windows-x64.zip
-          path: oryvex/oryvex-windows-x64.zip
+          path: oryvex-windows-x64.zip   # Fixed: no extra 'oryvex/' prefix
           if-no-files-found: error
